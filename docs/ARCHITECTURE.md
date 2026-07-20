@@ -1,0 +1,1 @@
+Architecture doc content - see full file in sandbox
