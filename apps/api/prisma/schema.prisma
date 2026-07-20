@@ -1,0 +1,240 @@
+// SiteGrade — Prisma Schema
+// Database: PostgreSQL via Supabase
+// ORM: Prisma v5
+// Tables: users, organizations, org_members, audits, audit_results,
+//         ai_recommendations, reports, subscriptions, api_keys
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Plan {
+  FREE
+  PRO
+  AGENCY
+}
+
+enum OrgRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum AuditStatus {
+  QUEUED
+  RUNNING
+  COMPLETE
+  FAILED
+}
+
+enum IssueSeverity {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  TRIALING
+  INCOMPLETE
+}
+
+// Table 1: users
+model User {
+  id        String   @id @default(uuid()) @db.Uuid
+  email     String   @unique @db.VarChar(255)
+  name      String?  @db.VarChar(255)
+  avatarUrl String?  @map("avatar_url") @db.Text
+  plan      Plan     @default(FREE)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  ownedOrgs      Organization[]  @relation("OrgOwner")
+  orgMemberships OrgMember[]
+  audits         Audit[]
+  reports        Report[]
+  subscription   Subscription?
+  apiKeys        ApiKey[]
+
+  @@index([email])
+  @@index([plan])
+  @@map("users")
+}
+
+// Table 2: organizations
+model Organization {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String   @db.VarChar(255)
+  slug      String   @unique @db.VarChar(100)
+  ownerId   String   @map("owner_id") @db.Uuid
+  plan      Plan     @default(FREE)
+  seats     Int      @default(1)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  owner        User          @relation("OrgOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members      OrgMember[]
+  audits       Audit[]
+  subscription Subscription?
+  apiKeys      ApiKey[]
+
+  @@index([ownerId])
+  @@index([slug])
+  @@map("organizations")
+}
+
+// Table 3: org_members
+model OrgMember {
+  id       String   @id @default(uuid()) @db.Uuid
+  orgId    String   @map("org_id") @db.Uuid
+  userId   String   @map("user_id") @db.Uuid
+  role     OrgRole  @default(MEMBER)
+  joinedAt DateTime @default(now()) @map("joined_at") @db.Timestamptz
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, userId])
+  @@index([orgId])
+  @@index([userId])
+  @@map("org_members")
+}
+
+// Table 4: audits
+model Audit {
+  id          String      @id @default(uuid()) @db.Uuid
+  url         String      @db.Text
+  userId      String      @map("user_id") @db.Uuid
+  orgId       String?     @map("org_id") @db.Uuid
+  status      AuditStatus @default(QUEUED)
+  options     Json        @default("{}")
+  createdAt   DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  completedAt DateTime?   @map("completed_at") @db.Timestamptz
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [orgId], references: [id], onDelete: SetNull)
+  result       AuditResult?
+  reports      Report[]
+
+  @@index([userId])
+  @@index([orgId])
+  @@index([status])
+  @@index([url])
+  @@index([createdAt(sort: Desc)])
+  @@map("audits")
+}
+
+// Table 5: audit_results
+model AuditResult {
+  id                 String   @id @default(uuid()) @db.Uuid
+  auditId            String   @unique @map("audit_id") @db.Uuid
+  performanceScore   Int      @map("performance_score") @db.SmallInt
+  accessibilityScore Int      @map("accessibility_score") @db.SmallInt
+  seoScore           Int      @map("seo_score") @db.SmallInt
+  bestPracticesScore Int      @map("best_practices_score") @db.SmallInt
+  rawLighthouse      Json     @map("raw_lighthouse")
+  rawAxe             Json     @map("raw_axe") @default("[]")
+  issues             Json     @default("[]")
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  audit           Audit              @relation(fields: [auditId], references: [id], onDelete: Cascade)
+  recommendations AiRecommendation[]
+
+  @@index([auditId])
+  @@index([performanceScore])
+  @@index([createdAt(sort: Desc)])
+  @@map("audit_results")
+}
+
+// Table 6: ai_recommendations
+model AiRecommendation {
+  id            String        @id @default(uuid()) @db.Uuid
+  auditResultId String        @map("audit_result_id") @db.Uuid
+  category      String        @db.VarChar(50)
+  severity      IssueSeverity
+  title         String        @db.VarChar(500)
+  description   String        @db.Text
+  fixSuggestion String        @map("fix_suggestion") @db.Text
+  cacheKey      String        @unique @map("cache_key") @db.VarChar(64)
+  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz
+
+  auditResult AuditResult @relation(fields: [auditResultId], references: [id], onDelete: Cascade)
+
+  @@index([auditResultId])
+  @@index([severity])
+  @@index([cacheKey])
+  @@map("ai_recommendations")
+}
+
+// Table 7: reports
+model Report {
+  id         String    @id @default(uuid()) @db.Uuid
+  auditId    String    @map("audit_id") @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  pdfUrl     String?   @map("pdf_url") @db.Text
+  shareToken String    @unique @map("share_token") @db.VarChar(64)
+  isPublic   Boolean   @default(false) @map("is_public")
+  expiresAt  DateTime? @map("expires_at") @db.Timestamptz
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  audit Audit @relation(fields: [auditId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([auditId])
+  @@index([userId])
+  @@index([shareToken])
+  @@index([isPublic])
+  @@map("reports")
+}
+
+// Table 8: subscriptions
+model Subscription {
+  id                   String             @id @default(uuid()) @db.Uuid
+  userId               String?            @unique @map("user_id") @db.Uuid
+  orgId                String?            @unique @map("org_id") @db.Uuid
+  stripeCustomerId     String             @unique @map("stripe_customer_id") @db.VarChar(255)
+  stripeSubscriptionId String             @unique @map("stripe_subscription_id") @db.VarChar(255)
+  plan                 Plan
+  status               SubscriptionStatus
+  currentPeriodStart   DateTime           @map("current_period_start") @db.Timestamptz
+  currentPeriodEnd     DateTime           @map("current_period_end") @db.Timestamptz
+  createdAt            DateTime           @default(now()) @map("created_at") @db.Timestamptz
+
+  user         User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  organization Organization? @relation(fields: [orgId], references: [id], onDelete: SetNull)
+
+  @@index([stripeCustomerId])
+  @@index([stripeSubscriptionId])
+  @@index([status])
+  @@map("subscriptions")
+}
+
+// Table 9: api_keys
+model ApiKey {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  orgId      String?   @map("org_id") @db.Uuid
+  keyHash    String    @unique @map("key_hash") @db.VarChar(64)
+  name       String    @db.VarChar(255)
+  lastUsedAt DateTime? @map("last_used_at") @db.Timestamptz
+  expiresAt  DateTime? @map("expires_at") @db.Timestamptz
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  revokedAt  DateTime? @map("revoked_at") @db.Timestamptz
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [orgId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([orgId])
+  @@index([keyHash])
+  @@index([revokedAt])
+  @@map("api_keys")
+}
