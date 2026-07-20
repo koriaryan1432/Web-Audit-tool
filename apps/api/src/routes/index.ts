@@ -1,16 +1,14 @@
 import { Hono } from 'hono';
-import { audits } from './audits.js';
-import { reports } from './reports.js';
-import type { AppVariables } from '../types/auth.js';
+import { auditsRouter } from './audits.js';
+import { reportsRouter } from './reports.js';
 
-const api = new Hono<{ Variables: AppVariables }>();
+const apiRouter = new Hono();
 
-api.route('/audits', audits);
-api.route('/reports', reports);
+apiRouter.route('/audits', auditsRouter);
+apiRouter.route('/', reportsRouter);
 
-// Health check
-api.get('/health', (c) =>
-  c.json({ status: 'ok', service: 'sitegarde-api', timestamp: new Date().toISOString() })
-);
+apiRouter.get('/health', (c) => {
+  return c.json({ status: 'ok', version: process.env.npm_package_version ?? '0.0.1', timestamp: new Date().toISOString() });
+});
 
-export { api };
+export { apiRouter };
