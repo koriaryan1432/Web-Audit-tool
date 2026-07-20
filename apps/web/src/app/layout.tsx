@@ -1,29 +1,34 @@
-import type { Metadata } from "next";
-import { Inter } from "next/font/google";
-import "./globals.css";
+import type { Metadata } from 'next';
+import { Inter } from 'next/font/google';
+import './globals.css';
 
-const inter = Inter({ subsets: ["latin"] });
+const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 
 export const metadata: Metadata = {
-  title: "SiteGrade — Know your score. Fix what matters.",
+  title: {
+    default: 'SiteGrade — Website Audit Tool',
+    template: '%s | SiteGrade',
+  },
   description:
-    "Website Performance & UX Audit SaaS. Get instant, AI-powered audit reports across Performance, SEO, Accessibility, Security, UX, and Best Practices.",
-  keywords: ["website audit", "performance", "SEO", "accessibility", "Lighthouse"],
+    'Know your score. Fix what matters. Instant website performance, accessibility, SEO, and best-practices audits with AI-powered recommendations.',
+  keywords: ['website audit', 'performance', 'accessibility', 'SEO', 'Lighthouse'],
   openGraph: {
-    title: "SiteGrade",
-    description: "Know your score. Fix what matters.",
-    type: "website",
+    title: 'SiteGrade',
+    description: 'Know your score. Fix what matters.',
+    type: 'website',
   },
 };
 
 export default function RootLayout({
   children,
-}: Readonly<{
+}: {
   children: React.ReactNode;
-}>) {
+}) {
   return (
-    <html lang="en">
-      <body className={inter.className}>{children}</body>
+    <html lang="en" className={inter.variable}>
+      <body className="min-h-screen bg-gray-950 text-gray-100 antialiased">
+        {children}
+      </body>
     </html>
   );
 }
