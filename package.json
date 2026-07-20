@@ -1,0 +1,31 @@
+{
+  "name": "sitegarde",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SiteGrade — Website Performance & UX Audit SaaS",
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=9.0.0"
+  },
+  "packageManager": "pnpm@9.1.0",
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "clean": "turbo run clean && rm -rf node_modules",
+    "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,md,json}\""
+  },
+  "devDependencies": {
+    "@sitegarde/config": "workspace:*",
+    "prettier": "^3.3.2",
+    "turbo": "^2.0.9",
+    "typescript": "^5.5.3"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ]
+}
