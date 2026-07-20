@@ -1,21 +1,22 @@
-'use client';
-
 import { createBrowserClient } from '@supabase/ssr';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-let _client: ReturnType<typeof createBrowserClient> | null = null;
-
 /**
  * Supabase browser client singleton.
- * Safe to call multiple times — returns the same instance.
+ * Uses @supabase/ssr for Next.js App Router compatibility.
+ * Handles cookie-based session management automatically.
  */
+export function createSupabaseBrowserClient() {
+  return createBrowserClient(supabaseUrl, supabaseAnonKey);
+}
+
+let _client: ReturnType<typeof createSupabaseBrowserClient> | null = null;
+
 export function getSupabaseClient() {
-  if (!_client) {
-    _client = createBrowserClient(supabaseUrl, supabaseAnonKey);
-  }
+  if (!_client) _client = createSupabaseBrowserClient();
   return _client;
 }
 
-export const supabase = getSupabaseClient();
+export type { User, Session } from '@supabase/supabase-js';
