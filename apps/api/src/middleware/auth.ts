@@ -1,53 +1,94 @@
-import type { MiddlewareHandler } from 'hono';
-import { verifySupabaseToken } from '../lib/supabase.js';
+import type { Context, Next } from 'hono';
+import { createMiddleware } from 'hono/factory';
+import { HTTPException } from 'hono/http-exception';
+import { supabaseAdmin } from '../lib/supabase.js';
 import { prisma } from '../lib/prisma.js';
-import type { AppVariables, Plan } from '../types/auth.js';
-import { UnauthorizedError } from '../lib/errors.js';
+import type { Plan } from '@prisma/client';
+
+export type AuthUser = {
+  id: string;
+  email: string;
+  name: string | null;
+  plan: Plan;
+  orgId?: string;
+};
+
+declare module 'hono' {
+  interface ContextVariableMap {
+    user: AuthUser;
+  }
+}
 
 /**
- * JWT authentication middleware.
- * Extracts Bearer token -> verifies with Supabase -> loads user from DB -> attaches to context.
+ * Hono middleware: extracts and verifies the Supabase JWT from the
+ * Authorization: Bearer <token> header.
  *
- * Error codes:
- *   401 MISSING_TOKEN    - no Authorization header
- *   401 INVALID_TOKEN    - malformed or invalid JWT
- *   401 EXPIRED_TOKEN    - token has expired
- *   401 USER_NOT_FOUND   - valid token but user not in DB
+ * On success: attaches the resolved DB user to `c.var.user`.
+ * On failure: throws 401 HTTPException.
  */
-export const authMiddleware: MiddlewareHandler<{ Variables: AppVariables }> =
-  async (c, next) => {
-    const authHeader = c.req.header('Authorization');
+export const authMiddleware = createMiddleware(async (c: Context, next: Next) => {
+  const authHeader = c.req.header('Authorization');
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      throw new UnauthorizedError('Missing or malformed Authorization header', 'MISSING_TOKEN');
-    }
-
-    const token = authHeader.slice(7);
-
-    let supabaseUser;
-    try {
-      supabaseUser = await verifySupabaseToken(token);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Token verification failed';
-      const code = message.toLowerCase().includes('expired') ? 'EXPIRED_TOKEN' : 'INVALID_TOKEN';
-      throw new UnauthorizedError(message, code);
-    }
-
-    // Load full user record from DB to get plan info
-    const dbUser = await prisma.user.findUnique({
-      where: { id: supabaseUser.id },
-      select: { id: true, email: true, plan: true },
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    throw new HTTPException(401, {
+      message: 'Missing or malformed Authorization header. Expected: Bearer <token>',
     });
+  }
 
-    if (!dbUser) {
-      throw new UnauthorizedError('User not found', 'USER_NOT_FOUND');
-    }
+  const token = authHeader.slice(7).trim();
 
-    c.set('user', {
-      id: dbUser.id,
-      email: dbUser.email,
-      plan: dbUser.plan as Plan,
+  if (!token) {
+    throw new HTTPException(401, { message: 'Empty bearer token' });
+  }
+
+  const { data, error } = await supabaseAdmin.auth.getUser(token);
+
+  if (error || !data.user) {
+    throw new HTTPException(401, {
+      message: error?.message ?? 'Invalid or expired token',
     });
+  }
 
-    await next();
-  };
+  const supabaseUser = data.user;
+
+  const dbUser = await prisma.user.findUnique({
+    where: { id: supabaseUser.id },
+    select: { id: true, email: true, name: true, plan: true },
+  });
+
+  if (!dbUser) {
+    const provisioned = await prisma.user.create({
+      data: {
+        id: supabaseUser.id,
+        email: supabaseUser.email!,
+        name: supabaseUser.user_metadata?.full_name ?? null,
+        plan: 'FREE',
+      },
+      select: { id: true, email: true, name: true, plan: true },
+    });
+    c.set('user', provisioned);
+  } else {
+    c.set('user', dbUser);
+  }
+
+  await next();
+});
+
+export const optionalAuthMiddleware = createMiddleware(async (c: Context, next: Next) => {
+  const authHeader = c.req.header('Authorization');
+
+  if (authHeader?.startsWith('Bearer ')) {
+    const token = authHeader.slice(7).trim();
+    const { data } = await supabaseAdmin.auth.getUser(token);
+
+    if (data.user) {
+      const dbUser = await prisma.user.findUnique({
+        where: { id: data.user.id },
+        select: { id: true, email: true, name: true, plan: true },
+      });
+      if (dbUser) c.set('user', dbUser);
+    }
+  }
+
+  await next();
+});

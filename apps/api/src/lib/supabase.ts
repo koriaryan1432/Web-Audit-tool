@@ -1,34 +1,42 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabaseUrl = process.env.SUPABASE_URL!;
+const supabaseAnonKey = process.env.SUPABASE_ANON_KEY!;
+const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-if (!supabaseUrl || !supabaseServiceRoleKey) {
+if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceRoleKey) {
   throw new Error(
-    'Missing required environment variables: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY'
+    'Missing Supabase environment variables: SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY'
   );
 }
 
 /**
- * Supabase server-side client with service role key.
- * Use ONLY in server-side code — never expose to the client.
- * Has full database access, bypasses RLS.
+ * Anon client — safe to use in request handlers for user-scoped operations.
+ * Respects Row Level Security policies.
  */
-export const supabase = createClient(supabaseUrl, supabaseServiceRoleKey, {
+export const supabaseAnon = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     autoRefreshToken: false,
     persistSession: false,
+    detectSessionInUrl: false,
   },
 });
 
 /**
- * Verify a JWT token issued by Supabase Auth.
- * Returns the user payload or throws on invalid/expired token.
+ * Service-role client — bypasses RLS. Use ONLY in server-side code
+ * where you've already verified the caller's identity (e.g., webhook handlers,
+ * background workers, admin operations). Never expose to the client.
  */
-export async function verifySupabaseToken(token: string) {
-  const { data, error } = await supabase.auth.getUser(token);
-  if (error || !data.user) {
-    throw new Error(error?.message ?? 'Invalid token');
-  }
-  return data.user;
-}
+export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false,
+    detectSessionInUrl: false,
+  },
+});
+
+export type SupabaseUser = {
+  id: string;
+  email: string;
+  role?: string;
+};
