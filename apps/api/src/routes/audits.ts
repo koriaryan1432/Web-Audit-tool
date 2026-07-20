@@ -1,255 +1,100 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
+import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
-import { enqueueAudit, getJobProgress } from '../lib/queue.js';
-import { validateAuditUrl } from '@sitegarde/utils';
-import {
-  CreateAuditSchema,
-  ListAuditsSchema,
-  AuditIdSchema,
-  GenerateReportSchema,
-} from '../lib/validators.js';
+import { dispatchAuditJob } from '../lib/queue.js';
 import { authMiddleware } from '../middleware/auth.js';
-import { rateLimitMiddleware } from '../middleware/rate-limit.js';
-import { planGuard } from '../middleware/plan-guard.js';
-import { NotFoundError, ForbiddenError, ValidationError } from '../lib/errors.js';
-import type { AppVariables } from '../types/auth.js';
-import { DEFAULT_AUDIT_OPTIONS } from '../types/queue.js';
-import { randomUUID } from 'crypto';
+import { auditQuotaGuard } from '../middleware/plan-guard.js';
+import { validateAuditUrl } from '@sitegarde/utils';
 
-const audits = new Hono<{ Variables: AppVariables }>();
+const auditsRouter = new Hono();
 
-// All audit routes require authentication
-audits.use('*', authMiddleware);
+const createAuditSchema = z.object({
+  url: z.string().url('Must be a valid URL').max(2048),
+  options: z.object({
+    categories: z.array(z.enum(['performance', 'accessibility', 'best-practices', 'seo'])).optional(),
+    runAxe: z.boolean().optional().default(true),
+    generateAiRecommendations: z.boolean().optional().default(false),
+    device: z.enum(['mobile', 'desktop']).optional().default('mobile'),
+    throttling: z.enum(['simulated', 'devtools', 'none']).optional().default('simulated'),
+  }).optional().default({}),
+  orgId: z.string().uuid().optional(),
+});
 
-/**
- * POST /api/v1/audits
- * Create and enqueue a new audit.
- */
-audits.post(
-  '/',
-  rateLimitMiddleware,
-  zValidator('json', CreateAuditSchema, (result, c) => {
-    if (!result.success) {
-      throw new ValidationError('Invalid request body', result.error.flatten());
-    }
-  }),
-  async (c) => {
-    const user = c.get('user');
-    const { url, options } = c.req.valid('json');
+const paginationSchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
 
-    // SSRF validation
-    const validation = await validateAuditUrl(url);
-    if (!validation.valid) {
-      throw new ValidationError(validation.error ?? 'Invalid URL', { url });
-    }
+// POST /api/v1/audits
+auditsRouter.post('/', authMiddleware, auditQuotaGuard, zValidator('json', createAuditSchema), async (c) => {
+  const user = c.get('user');
+  const body = c.req.valid('json');
 
-    const sanitizedUrl = validation.sanitizedUrl ?? url;
-    const auditId = randomUUID();
+  const validation = await validateAuditUrl(body.url);
+  if (!validation.valid) return c.json({ error: 'Invalid URL', detail: validation.error }, 400);
 
-    // Create audit record
-    await prisma.audit.create({
-      data: {
-        id: auditId,
-        url: sanitizedUrl,
-        userId: user.id,
-        status: 'QUEUED',
-        options: options as object,
+  const safeUrl = validation.sanitizedUrl!;
+  const audit = await prisma.audit.create({
+    data: { url: safeUrl, userId: user.id, orgId: body.orgId ?? null, status: 'QUEUED', options: body.options as object },
+    select: { id: true, url: true, status: true, createdAt: true, options: true },
+  });
+
+  await dispatchAuditJob({ auditId: audit.id, url: safeUrl, userId: user.id, orgId: body.orgId, options: body.options });
+
+  return c.json({ auditId: audit.id, url: audit.url, status: audit.status, createdAt: audit.createdAt, message: 'Audit queued. Poll GET /api/v1/audits/:id for status.' }, 202);
+});
+
+// GET /api/v1/audits
+auditsRouter.get('/', authMiddleware, zValidator('query', paginationSchema), async (c) => {
+  const user = c.get('user');
+  const { page, limit } = c.req.valid('query');
+  const skip = (page - 1) * limit;
+
+  const [audits, total] = await Promise.all([
+    prisma.audit.findMany({
+      where: { userId: user.id },
+      orderBy: { createdAt: 'desc' },
+      skip, take: limit,
+      select: {
+        id: true, url: true, status: true, createdAt: true, completedAt: true,
+        auditResult: { select: { performanceScore: true, accessibilityScore: true, seoScore: true, bestPracticesScore: true } },
       },
-    });
+    }),
+    prisma.audit.count({ where: { userId: user.id } }),
+  ]);
 
-    // Enqueue job
-    const { jobId, queuePosition } = await enqueueAudit({
-      auditId,
-      url: sanitizedUrl,
-      userId: user.id,
-      options: { ...DEFAULT_AUDIT_OPTIONS, ...options },
-    });
+  return c.json({ data: audits, pagination: { page, limit, total, totalPages: Math.ceil(total / limit), hasNext: page * limit < total, hasPrev: page > 1 } });
+});
 
-    const estimatedSeconds = Math.max(30, queuePosition * 45);
+// GET /api/v1/audits/:id
+auditsRouter.get('/:id', authMiddleware, async (c) => {
+  const user = c.get('user');
+  const auditId = c.req.param('id');
 
-    return c.json(
-      {
-        auditId,
-        jobId,
-        status: 'QUEUED',
-        url: sanitizedUrl,
-        estimatedTime: estimatedSeconds,
-        queuePosition,
-      },
-      201
-    );
-  }
-);
+  const audit = await prisma.audit.findFirst({
+    where: { id: auditId, userId: user.id },
+    include: {
+      auditResult: { include: { aiRecommendations: { orderBy: [{ severity: 'asc' }, { category: 'asc' }] } } },
+      reports: { select: { id: true, shareToken: true, isPublic: true, expiresAt: true, createdAt: true } },
+    },
+  });
 
-/**
- * GET /api/v1/audits
- * Paginated list of audits for the authenticated user.
- */
-audits.get(
-  '/',
-  zValidator('query', ListAuditsSchema, (result, c) => {
-    if (!result.success) {
-      throw new ValidationError('Invalid query parameters', result.error.flatten());
-    }
-  }),
-  async (c) => {
-    const user = c.get('user');
-    const { page, limit, status, sort, order } = c.req.valid('query');
+  if (!audit) return c.json({ error: 'Audit not found' }, 404);
+  return c.json({ data: audit });
+});
 
-    const where = {
-      userId: user.id,
-      ...(status && { status }),
-    };
+// DELETE /api/v1/audits/:id
+auditsRouter.delete('/:id', authMiddleware, async (c) => {
+  const user = c.get('user');
+  const auditId = c.req.param('id');
 
-    const [total, data] = await Promise.all([
-      prisma.audit.count({ where }),
-      prisma.audit.findMany({
-        where,
-        orderBy: { [sort]: order },
-        skip: (page - 1) * limit,
-        take: limit,
-        include: {
-          result: {
-            select: {
-              performanceScore: true,
-              accessibilityScore: true,
-              seoScore: true,
-              bestPracticesScore: true,
-            },
-          },
-        },
-      }),
-    ]);
+  const audit = await prisma.audit.findFirst({ where: { id: auditId, userId: user.id }, select: { id: true, status: true } });
+  if (!audit) return c.json({ error: 'Audit not found' }, 404);
+  if (audit.status === 'RUNNING') return c.json({ error: 'Cannot delete a running audit.' }, 409);
 
-    return c.json({
-      data,
-      meta: {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit),
-      },
-    });
-  }
-);
+  await prisma.audit.delete({ where: { id: auditId } });
+  return c.json({ message: 'Audit deleted' }, 200);
+});
 
-/**
- * GET /api/v1/audits/:id
- * Single audit with full results and live progress if running.
- */
-audits.get(
-  '/:id',
-  zValidator('param', AuditIdSchema, (result, c) => {
-    if (!result.success) throw new ValidationError('Invalid audit ID');
-  }),
-  async (c) => {
-    const user = c.get('user');
-    const { id } = c.req.valid('param');
-
-    const audit = await prisma.audit.findUnique({
-      where: { id },
-      include: {
-        result: {
-          include: { recommendations: true },
-        },
-      },
-    });
-
-    if (!audit) throw new NotFoundError('Audit not found');
-    if (audit.userId !== user.id) throw new ForbiddenError('Access denied');
-
-    let progress: { progress: number; status: string } | null = null;
-    if (audit.status === 'RUNNING' || audit.status === 'QUEUED') {
-      progress = await getJobProgress(id);
-    }
-
-    return c.json({ ...audit, progress });
-  }
-);
-
-/**
- * DELETE /api/v1/audits/:id
- * Soft delete — owner only.
- */
-audits.delete(
-  '/:id',
-  zValidator('param', AuditIdSchema, (result, c) => {
-    if (!result.success) throw new ValidationError('Invalid audit ID');
-  }),
-  async (c) => {
-    const user = c.get('user');
-    const { id } = c.req.valid('param');
-
-    const audit = await prisma.audit.findUnique({ where: { id } });
-    if (!audit) throw new NotFoundError('Audit not found');
-    if (audit.userId !== user.id) throw new ForbiddenError('Access denied');
-
-    await prisma.audit.delete({ where: { id } });
-
-    return c.json({ success: true, deletedId: id });
-  }
-);
-
-/**
- * POST /api/v1/audits/:id/report
- * Generate a shareable report link. PRO+ only.
- */
-audits.post(
-  '/:id/report',
-  planGuard('PRO'),
-  zValidator('param', AuditIdSchema, (result, c) => {
-    if (!result.success) throw new ValidationError('Invalid audit ID');
-  }),
-  zValidator('json', GenerateReportSchema, (result, c) => {
-    if (!result.success) {
-      throw new ValidationError('Invalid request body', result.error.flatten());
-    }
-  }),
-  async (c) => {
-    const user = c.get('user');
-    const { id } = c.req.valid('param');
-    const { expiresInDays, isPublic } = c.req.valid('json');
-
-    const audit = await prisma.audit.findUnique({
-      where: { id },
-      include: { result: true },
-    });
-
-    if (!audit) throw new NotFoundError('Audit not found');
-    if (audit.userId !== user.id) throw new ForbiddenError('Access denied');
-    if (audit.status !== 'COMPLETE') {
-      throw new ValidationError('Audit must be complete before generating a report');
-    }
-
-    const shareToken = randomUUID().replace(/-/g, '');
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + expiresInDays);
-
-    const report = await prisma.report.upsert({
-      where: { auditId: id },
-      create: {
-        auditId: id,
-        userId: user.id,
-        shareToken,
-        isPublic,
-        expiresAt,
-      },
-      update: {
-        shareToken,
-        isPublic,
-        expiresAt,
-      },
-    });
-
-    return c.json({
-      reportId: report.id,
-      shareToken: report.shareToken,
-      shareUrl: `/reports/${report.shareToken}`,
-      expiresAt: report.expiresAt,
-      isPublic: report.isPublic,
-    });
-  }
-);
-
-export { audits };
+export { auditsRouter };
