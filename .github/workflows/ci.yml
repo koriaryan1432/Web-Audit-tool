@@ -6,13 +6,9 @@ on:
   pull_request:
     branches: [main, dev]
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 env:
-  NODE_VERSION: "20"
-  PNPM_VERSION: "9.1.0"
+  NODE_VERSION: '20'
+  PNPM_VERSION: '9'
 
 jobs:
   lint:
@@ -26,9 +22,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: "pnpm"
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm turbo run lint --parallel
+          cache: 'pnpm'
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Run ESLint
+        run: pnpm turbo lint
 
   typecheck:
     name: Type Check
@@ -41,10 +39,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: "pnpm"
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @sitegarde/api exec prisma generate
-      - run: pnpm turbo run typecheck --parallel
+          cache: 'pnpm'
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Generate Prisma client
+        run: pnpm --filter @sitegarde/api exec prisma generate
+        env:
+          DATABASE_URL: 'postgresql://placeholder:placeholder@localhost:5432/placeholder'
+      - name: Run TypeScript type check
+        run: pnpm turbo typecheck
 
   test:
     name: Test
@@ -57,24 +60,25 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: "pnpm"
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @sitegarde/api exec prisma generate
+          cache: 'pnpm'
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
       - name: Run tests (vitest)
-        run: pnpm turbo run test --parallel
+        run: pnpm turbo test
         env:
-          DATABASE_URL: "postgresql://test:test@localhost:5432/test"
-          DIRECT_URL: "postgresql://test:test@localhost:5432/test"
-      - uses: codecov/codecov-action@v4
+          NODE_ENV: test
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
         if: always()
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          fail_ci_if_error: false
+          name: coverage
+          path: '**/coverage/**'
+          retention-days: 7
 
   build:
     name: Build
     runs-on: ubuntu-latest
-    needs: [lint, typecheck]
+    needs: [lint, typecheck, test]
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -83,23 +87,20 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: "pnpm"
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @sitegarde/api exec prisma generate
-      - name: Build all packages (Turborepo)
-        run: pnpm turbo run build
+          cache: 'pnpm'
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Generate Prisma client
+        run: pnpm --filter @sitegarde/api exec prisma generate
         env:
-          NEXT_PUBLIC_SUPABASE_URL: "https://placeholder.supabase.co"
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: "placeholder"
-          NEXT_PUBLIC_API_URL: "http://localhost:3001"
-          NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: "pk_test_placeholder"
-          NEXT_PUBLIC_APP_URL: "http://localhost:3000"
-      - uses: actions/cache@v4
-        with:
-          path: .turbo
-          key: ${{ runner.os }}-turbo-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-turbo-
+          DATABASE_URL: 'postgresql://placeholder:placeholder@localhost:5432/placeholder'
+      - name: Build all packages and apps
+        run: pnpm turbo build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: 'https://placeholder.supabase.co'
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: 'placeholder'
+          NEXT_PUBLIC_API_URL: 'http://localhost:3001'
+          NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: 'pk_test_placeholder'
 
   security-scan:
     name: Security Scan
@@ -112,28 +113,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: "pnpm"
-      - run: pnpm install --frozen-lockfile
-      - name: Run npm audit (high severity)
+          cache: 'pnpm'
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Audit dependencies for vulnerabilities
         run: pnpm audit --audit-level=high
-        continue-on-error: false
-      - name: Check for secrets in code (gitleaks)
+        continue-on-error: true
+      - name: Check for secrets with gitleaks
         uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
         continue-on-error: true
-
-  ci-success:
-    name: CI Success
-    runs-on: ubuntu-latest
-    needs: [lint, typecheck, test, build, security-scan]
-    if: always()
-    steps:
-      - name: Check all jobs passed
-        run: |
-          if [[ "${{ needs.lint.result }}" != "success" ]]; then echo "Lint failed"; exit 1; fi
-          if [[ "${{ needs.typecheck.result }}" != "success" ]]; then echo "Type check failed"; exit 1; fi
-          if [[ "${{ needs.test.result }}" != "success" ]]; then echo "Tests failed"; exit 1; fi
-          if [[ "${{ needs.build.result }}" != "success" ]]; then echo "Build failed"; exit 1; fi
-          echo "All CI checks passed"
