@@ -3,7 +3,7 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   // Required for Docker multi-stage builds — produces a self-contained server
   output: "standalone",
-  transpilePackages: ["@sitegade/ui", "@sitegade/types"],
+  transpilePackages: ["@sitegarde/ui", "@sitegarde/types"],
   experimental: {
     serverActions: {
       allowedOrigins: [
