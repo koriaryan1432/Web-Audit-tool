@@ -68,12 +68,10 @@ RUN npx playwright install chromium --with-deps 2>/dev/null || true
 FROM playwright-install AS builder
 
 # Generate Prisma client
-RUN pnpm --filter @sitegade/worker exec prisma generate 2>/dev/null || \
-    pnpm --filter @sitegarde/worker exec prisma generate 2>/dev/null || true
+RUN pnpm --filter @sitegade/worker exec prisma generate
 
 # Build worker (tsc → dist/)
-RUN pnpm --filter @sitegade/worker build 2>/dev/null || \
-    pnpm --filter @sitegarde/worker build 2>/dev/null || true
+RUN pnpm --filter @sitegade/worker build
 
 # ─── Stage 4: runner ──────────────────────────────────────────────────────────
 FROM node:20-bookworm-slim AS runner
