@@ -1,9 +1,11 @@
 import 'dotenv/config';
 import { disconnectPrisma } from './lib/prisma.js';
 
+// Redis is enabled if Upstash vars are set OR if local Redis is configured
 const REDIS_ENABLED =
-  Boolean(process.env.UPSTASH_REDIS_URL) &&
-  Boolean(process.env.UPSTASH_REDIS_TOKEN);
+  (Boolean(process.env.UPSTASH_REDIS_URL) && Boolean(process.env.UPSTASH_REDIS_TOKEN)) ||
+  process.env.USE_LOCAL_REDIS === 'true' ||
+  (Boolean(process.env.REDIS_URL) && !process.env.UPSTASH_REDIS_URL);
 
 console.log('[worker] SiteGrade Audit Worker starting...');
 console.log(`[worker] Concurrency: ${process.env.WORKER_CONCURRENCY ?? '2'}`);

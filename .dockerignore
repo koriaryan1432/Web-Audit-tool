@@ -1,0 +1,37 @@
+# ─── Git & CI ─────────────────────────────────────────────────────────────────
+.git
+.github
+.gitignore
+
+# ─── Node modules (installed fresh inside Docker) ─────────────────────────────
+node_modules
+**/node_modules
+
+# ─── Build outputs (rebuilt inside Docker) ────────────────────────────────────
+**/dist
+**/.next
+**/build
+
+# ─── Env files (never bake secrets into image layers) ─────────────────────────
+.env
+.env.*
+!.env.docker.example
+
+# ─── Dev / test artifacts ─────────────────────────────────────────────────────
+**/*.test.ts
+**/*.spec.ts
+**/coverage
+**/.turbo
+**/vitest.config.*
+
+# ─── Docs & misc ──────────────────────────────────────────────────────────────
+docs
+*.md
+!README-DOCKER.md
+
+# ─── OS / editor ──────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.vscode
+.idea
+*.log

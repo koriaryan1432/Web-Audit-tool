@@ -10,6 +10,15 @@ import type { AuditJobData, AuditJobResult, AuditJobProgress } from './types.js'
 const AUDIT_QUEUE_NAME = 'audit';
 
 function createConnection(): IORedis {
+  // Local Redis (Docker / dev) — USE_LOCAL_REDIS=true or REDIS_URL set without Upstash
+  if (process.env.USE_LOCAL_REDIS === 'true' || (process.env.REDIS_URL && !process.env.UPSTASH_REDIS_URL)) {
+    const redisUrl = process.env.REDIS_URL ?? 'redis://localhost:6379';
+    return new IORedis(redisUrl, {
+      maxRetriesPerRequest: null,
+      enableReadyCheck: false,
+    });
+  }
+  // Upstash (production)
   const url = new URL(process.env.UPSTASH_REDIS_URL!);
   return new IORedis({
     host: url.hostname, port: 6380,

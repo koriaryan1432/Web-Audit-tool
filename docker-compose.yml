@@ -1,0 +1,130 @@
+# SiteGrade — Local Docker Compose Stack
+# Spins up: web (Next.js), api (Hono), worker (BullMQ), redis
+# Supabase is external (cloud) — no local Supabase container
+#
+# Usage:
+#   cp .env.docker.example .env.docker
+#   # Fill in your Supabase keys in .env.docker
+#   docker compose up --build
+#
+# Health check: curl http://localhost:3001/api/v1/health
+# Web app:      http://localhost:3000
+
+version: "3.9"
+
+# ─── Shared network ───────────────────────────────────────────────────────────
+networks:
+  sitegrade:
+    driver: bridge
+
+# ─── Named volumes ────────────────────────────────────────────────────────────
+volumes:
+  redis_data:
+
+# ─── Services ─────────────────────────────────────────────────────────────────
+services:
+
+  # ── Redis (local BullMQ queue + cache) ──────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: sitegrade-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - sitegrade
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  # ── API (Hono on port 3001) ──────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: sitegrade-api
+    restart: unless-stopped
+    env_file:
+      - .env.docker
+    environment:
+      NODE_ENV: production
+      PORT: "3001"
+      # Local Redis (ioredis) — overrides any Upstash vars for local dev
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "3001:3001"
+    networks:
+      - sitegrade
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3001/api/v1/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  # ── Worker (BullMQ audit processor) ─────────────────────────────────────────
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    container_name: sitegrade-worker
+    restart: unless-stopped
+    env_file:
+      - .env.docker
+    environment:
+      NODE_ENV: production
+      WORKER_CONCURRENCY: "2"
+      # Local Redis — worker uses ioredis in local mode
+      REDIS_URL: redis://redis:6379
+      # Tell worker to use local Redis instead of Upstash
+      USE_LOCAL_REDIS: "true"
+    networks:
+      - sitegrade
+    depends_on:
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    # No port exposed — worker is a queue consumer only
+
+  # ── Web (Next.js on port 3000) ───────────────────────────────────────────────
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        # NEXT_PUBLIC_ vars must be baked in at build time
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+    container_name: sitegrade-web
+    restart: unless-stopped
+    env_file:
+      - .env.docker
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
+    ports:
+      - "3000:3000"
+    networks:
+      - sitegrade
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 60s

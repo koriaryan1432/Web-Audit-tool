@@ -1,7 +1,7 @@
 /**
  * BullMQ audit job queue — gracefully disabled when Redis env vars are absent.
  * When Redis is not configured, dispatchAuditJob logs a warning and returns null.
- * Set UPSTASH_REDIS_URL + UPSTASH_REDIS_TOKEN to enable the worker queue.
+ * Supports both local Redis (REDIS_URL / USE_LOCAL_REDIS) and Upstash (production).
  */
 import { Queue } from 'bullmq';
 import Redis from 'ioredis';
@@ -25,6 +25,15 @@ export type AuditJobData = {
 };
 
 function createRedisConnection(): Redis {
+  // Local Redis (Docker / dev) — USE_LOCAL_REDIS=true or REDIS_URL set without Upstash
+  if (process.env.USE_LOCAL_REDIS === 'true' || (process.env.REDIS_URL && !process.env.UPSTASH_REDIS_URL)) {
+    const redisUrl = process.env.REDIS_URL ?? 'redis://localhost:6379';
+    return new Redis(redisUrl, {
+      maxRetriesPerRequest: null,
+      enableReadyCheck: false,
+    });
+  }
+  // Upstash (production)
   const url = new URL(process.env.UPSTASH_REDIS_URL!);
   return new Redis({
     host: url.hostname,
@@ -36,9 +45,16 @@ function createRedisConnection(): Redis {
   });
 }
 
+// Redis is enabled if either local Redis or Upstash is configured
+const LOCAL_REDIS_ENABLED =
+  process.env.USE_LOCAL_REDIS === 'true' ||
+  (Boolean(process.env.REDIS_URL) && !process.env.UPSTASH_REDIS_URL);
+
+const QUEUE_ENABLED = REDIS_ENABLED || LOCAL_REDIS_ENABLED;
+
 let _connection: Redis | null = null;
 export function getRedisConnection(): Redis | null {
-  if (!REDIS_ENABLED) return null;
+  if (!QUEUE_ENABLED) return null;
   if (!_connection) _connection = createRedisConnection();
   return _connection;
 }
@@ -46,7 +62,7 @@ export function getRedisConnection(): Redis | null {
 let _queue: Queue<AuditJobData> | null = null;
 
 function getQueue(): Queue<AuditJobData> | null {
-  if (!REDIS_ENABLED) return null;
+  if (!QUEUE_ENABLED) return null;
   if (!_queue) {
     const conn = getRedisConnection()!;
     _queue = new Queue<AuditJobData>(AUDIT_QUEUE_NAME, {
