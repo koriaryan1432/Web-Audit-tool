@@ -1,13 +1,13 @@
 import { Hono } from 'hono';
 import Stripe from 'stripe';
-import { stripe } from '../lib/stripe';
+import { STRIPE_ENABLED, getStripe } from '../lib/stripe.js';
 import {
   syncSubscriptionToDb,
   downgradeToFree,
   markSubscriptionPastDue,
   getUserIdFromCustomer,
   getPlanFromPriceId,
-} from '../services/billing';
+} from '../services/billing.js';
 
 const webhooksRouter = new Hono();
 
@@ -17,6 +17,10 @@ const processedEvents = new Set<string>();
 // POST /api/v1/webhooks/stripe
 // IMPORTANT: No JSON body parsing — raw body required for Stripe signature verification
 webhooksRouter.post('/stripe', async (c) => {
+  if (!STRIPE_ENABLED) {
+    return c.json({ error: 'Billing not configured' }, 503);
+  }
+  const stripe = getStripe();
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
   if (!webhookSecret) {
     console.error('[Webhook] STRIPE_WEBHOOK_SECRET not configured');
@@ -28,7 +32,6 @@ webhooksRouter.post('/stripe', async (c) => {
     return c.json({ error: 'Missing stripe-signature header' }, 400);
   }
 
-  // Read raw body for signature verification
   const rawBody = await c.req.raw.arrayBuffer();
   const bodyBuffer = Buffer.from(rawBody);
 
@@ -41,7 +44,6 @@ webhooksRouter.post('/stripe', async (c) => {
     return c.json({ error: `Webhook signature verification failed: ${message}` }, 400);
   }
 
-  // Return 200 immediately, process async
   processWebhookEvent(event).catch((err) => {
     console.error(`[Webhook] Async processing error for ${event.id}:`, err);
   });
@@ -64,13 +66,13 @@ async function processWebhookEvent(event: Stripe.Event): Promise<void> {
         if (session.mode !== 'subscription') break;
         const userId = session.metadata?.userId;
         if (!userId) { console.error('[Webhook] Missing userId in metadata'); break; }
-        const subscription = await stripe.subscriptions.retrieve(session.subscription as string);
+        const subscription = await getStripe().subscriptions.retrieve(session.subscription as string);
         await syncSubscriptionToDb(subscription, userId);
         const priceId = subscription.items.data[0]?.price.id;
         const plan = priceId ? getPlanFromPriceId(priceId) : 'FREE';
         console.log(`[Webhook] User ${userId} upgraded to ${plan}`);
         try {
-          const { sendPlanUpgradedEmail } = await import('../emails/plan-upgraded');
+          const { sendPlanUpgradedEmail } = await import('../emails/plan-upgraded.js');
           sendPlanUpgradedEmail(userId, plan as any).catch(console.error);
         } catch { /* email is non-critical */ }
         break;

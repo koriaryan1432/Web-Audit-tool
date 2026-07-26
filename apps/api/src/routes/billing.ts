@@ -1,13 +1,24 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
-import { stripe } from '../lib/stripe';
-import { getOrCreateStripeCustomer } from '../services/billing';
-import { authMiddleware } from '../middleware/auth';
-import { AppError } from '../lib/errors';
-import { prisma } from '../lib/prisma';
+import { STRIPE_ENABLED, getStripe } from '../lib/stripe.js';
+import { getOrCreateStripeCustomer } from '../services/billing.js';
+import { authMiddleware } from '../middleware/auth.js';
+import { AppError } from '../lib/errors.js';
+import { prisma } from '../lib/prisma.js';
 
 const billingRouter = new Hono();
+
+/** Guard: return 503 if Stripe keys are not configured */
+function requireStripe() {
+  if (!STRIPE_ENABLED) {
+    throw new AppError(
+      'Billing is not yet configured. Stripe keys are pending.',
+      503,
+      'BILLING_NOT_CONFIGURED'
+    );
+  }
+}
 
 const checkoutSchema = z.object({
   plan: z.enum(['PRO', 'AGENCY']),
@@ -15,6 +26,8 @@ const checkoutSchema = z.object({
 
 // POST /api/v1/billing/checkout
 billingRouter.post('/checkout', authMiddleware, zValidator('json', checkoutSchema), async (c) => {
+  requireStripe();
+  const stripe = getStripe();
   const user = c.get('user');
   const { plan } = c.req.valid('json');
 
@@ -47,6 +60,8 @@ billingRouter.post('/checkout', authMiddleware, zValidator('json', checkoutSchem
 
 // GET /api/v1/billing/portal
 billingRouter.get('/portal', authMiddleware, async (c) => {
+  requireStripe();
+  const stripe = getStripe();
   const user = c.get('user');
   const appUrl = process.env.APP_URL ?? 'http://localhost:3000';
   const customerId = await getOrCreateStripeCustomer(user.id);
@@ -60,6 +75,7 @@ billingRouter.get('/portal', authMiddleware, async (c) => {
 });
 
 // GET /api/v1/billing/subscription
+// Works without Stripe — reads from DB only
 billingRouter.get('/subscription', authMiddleware, async (c) => {
   const user = c.get('user');
 
@@ -69,7 +85,6 @@ billingRouter.get('/subscription', authMiddleware, async (c) => {
       plan: true,
       status: true,
       currentPeriodEnd: true,
-      cancelAtPeriodEnd: true,
     },
   });
 
@@ -81,7 +96,7 @@ billingRouter.get('/subscription', authMiddleware, async (c) => {
     plan: subscription.plan,
     status: subscription.status,
     currentPeriodEnd: subscription.currentPeriodEnd?.toISOString() ?? null,
-    cancelAtPeriodEnd: subscription.cancelAtPeriodEnd ?? false,
+    cancelAtPeriodEnd: false, // cancelAtPeriodEnd not in schema yet — default false
   });
 });
 
