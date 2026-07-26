@@ -18,7 +18,7 @@ apiRouter.get('/health', (c) => {
     timestamp: new Date().toISOString(),
     features: {
       stripe: Boolean(process.env.STRIPE_SECRET_KEY),
-      redis: Boolean(process.env.UPSTASH_REDIS_URL),
+      redis: Boolean(process.env.UPSTASH_REDIS_URL) || Boolean(process.env.REDIS_URL),
       openai: Boolean(process.env.OPENAI_API_KEY),
     },
   });
