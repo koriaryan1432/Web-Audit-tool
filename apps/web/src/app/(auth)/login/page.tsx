@@ -19,18 +19,17 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true); setError(null); setSuccess(null);
     const supabase = getSupabaseClient();
-
     try {
       if (mode === 'magic') {
         const { error } = await supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: `${window.location.origin}/dashboard` } });
         if (error) throw error;
-        setSuccess('Check your email for a magic link!');
+        setSuccess('Check your email for a magic link.');
         return;
       }
       if (mode === 'signup') {
         const { error } = await supabase.auth.signUp({ email, password, options: { emailRedirectTo: `${window.location.origin}/dashboard` } });
         if (error) throw error;
-        setSuccess('Account created! Check your email to confirm.');
+        setSuccess('Account created. Check your email to confirm.');
         return;
       }
       const { error } = await supabase.auth.signInWithPassword({ email, password });
@@ -41,55 +40,56 @@ export default function LoginPage() {
     } finally { setLoading(false); }
   };
 
+  const TABS: { key: AuthMode; label: string }[] = [
+    { key: 'signin', label: 'Sign In' },
+    { key: 'signup', label: 'Sign Up' },
+    { key: 'magic',  label: 'Magic Link' },
+  ];
+
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-12 h-12 bg-indigo-600 rounded-xl mb-4">
-            <span className="text-white font-bold text-lg">SG</span>
+    <div style={{ minHeight: '100vh', background: 'var(--color-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-4)' }}>
+      <div style={{ width: '100%', maxWidth: 400 }}>
+        <div style={{ textAlign: 'center', marginBottom: 'var(--space-8)' }}>
+          <div style={{ marginBottom: 'var(--space-3)' }}>
+            <span style={{ fontFamily: 'var(--font-display)', fontStyle: 'italic', fontSize: 32, color: 'var(--color-ink)' }}>Site</span>
+            <span style={{ fontFamily: 'var(--font-ui)', fontSize: 32, fontWeight: 600, color: 'var(--color-signal)' }}>Grade</span>
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">SiteGrade</h1>
-          <p className="text-gray-500 mt-1 text-sm">Website Performance and UX Audits</p>
+          <p style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--text-sm)', color: 'var(--color-mist)' }}>Website Performance and UX Audits</p>
         </div>
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8">
-          <div className="flex rounded-lg bg-gray-100 p-1 mb-6">
-            {([{ key: 'signin', label: 'Sign In' }, { key: 'signup', label: 'Sign Up' }, { key: 'magic', label: 'Magic Link' }] as { key: AuthMode; label: string }[]).map((tab) => (
+        <div className="card" style={{ padding: 'var(--space-8)' }}>
+          <div style={{ display: 'flex', background: 'var(--color-bg)', borderRadius: 'var(--radius-md)', padding: 3, marginBottom: 'var(--space-6)' }}>
+            {TABS.map((tab) => (
               <button key={tab.key} onClick={() => { setMode(tab.key); setError(null); setSuccess(null); }}
-                className={`flex-1 py-1.5 text-sm font-medium rounded-md transition-colors ${mode === tab.key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                style={{ flex: 1, padding: '6px 0', fontFamily: 'var(--font-ui)', fontSize: 'var(--text-sm)', fontWeight: 500, borderRadius: 'var(--radius-sm)', border: 'none', cursor: 'pointer', background: mode === tab.key ? 'var(--color-surface)' : 'transparent', color: mode === tab.key ? 'var(--color-ink)' : 'var(--color-mist)', boxShadow: mode === tab.key ? 'var(--shadow-float)' : 'none', transition: `all 150ms var(--ease-out)` }}>
                 {tab.label}
               </button>
             ))}
           </div>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1.5">Email address</label>
-              <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" placeholder="you@example.com"
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent placeholder:text-gray-400" />
+              <label htmlFor="email" style={{ display: 'block', fontFamily: 'var(--font-ui)', fontSize: 'var(--text-sm)', fontWeight: 500, color: 'var(--color-ink)', marginBottom: 'var(--space-2)' }}>Email address</label>
+              <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" placeholder="you@example.com" className="input" />
             </div>
             {mode !== 'magic' && (
               <div>
-                <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1.5">Password</label>
-                <input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required
-                  autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
-                  placeholder={mode === 'signup' ? 'Min. 8 characters' : '••••••••'} minLength={mode === 'signup' ? 8 : undefined}
-                  className="w-full px-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent placeholder:text-gray-400" />
+                <label htmlFor="password" style={{ display: 'block', fontFamily: 'var(--font-ui)', fontSize: 'var(--text-sm)', fontWeight: 500, color: 'var(--color-ink)', marginBottom: 'var(--space-2)' }}>Password</label>
+                <input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete={mode === 'signup' ? 'new-password' : 'current-password'} placeholder={mode === 'signup' ? 'Min. 8 characters' : '••••••••'} minLength={mode === 'signup' ? 8 : undefined} className="input" />
               </div>
             )}
-            {error && <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3"><p className="text-sm text-red-700">{error}</p></div>}
-            {success && <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3"><p className="text-sm text-green-700">{success}</p></div>}
-            <button type="submit" disabled={loading}
-              className="w-full py-2.5 px-4 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
-              {loading ? 'Please wait...' : mode === 'signin' ? 'Sign In' : mode === 'signup' ? 'Create Account' : 'Send Magic Link'}
+            {error && <div style={{ padding: 'var(--space-3) var(--space-4)', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 'var(--radius-md)', fontFamily: 'var(--font-ui)', fontSize: 'var(--text-sm)', color: '#991B1B' }}>{error}</div>}
+            {success && <div style={{ padding: 'var(--space-3) var(--space-4)', background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: 'var(--radius-md)', fontFamily: 'var(--font-ui)', fontSize: 'var(--text-sm)', color: '#166534' }}>{success}</div>}
+            <button type="submit" disabled={loading} className="btn-primary" style={{ width: '100%', padding: '11px var(--space-4)' }}>
+              {loading ? 'Please wait…' : mode === 'signin' ? 'Sign In' : mode === 'signup' ? 'Create Account' : 'Send Magic Link'}
             </button>
           </form>
           {mode === 'signin' && (
-            <p className="text-center text-xs text-gray-500 mt-4">
-              No account? <button onClick={() => setMode('signup')} className="text-indigo-600 hover:underline font-medium">Sign up free</button>
+            <p style={{ textAlign: 'center', fontFamily: 'var(--font-ui)', fontSize: 'var(--text-xs)', color: 'var(--color-mist)', marginTop: 'var(--space-4)' }}>
+              No account? <button onClick={() => setMode('signup')} style={{ background: 'none', border: 'none', fontFamily: 'var(--font-ui)', fontSize: 'var(--text-xs)', fontWeight: 500, color: 'var(--color-signal)', cursor: 'pointer', padding: 0 }}>Sign up free</button>
             </p>
           )}
         </div>
-        <p className="text-center text-xs text-gray-400 mt-6">
-          By signing in, you agree to our <a href="/terms" className="hover:underline">Terms</a> and <a href="/privacy" className="hover:underline">Privacy Policy</a>.
+        <p style={{ textAlign: 'center', fontFamily: 'var(--font-ui)', fontSize: 'var(--text-xs)', color: 'var(--color-mist)', marginTop: 'var(--space-6)' }}>
+          By signing in, you agree to our <a href="/terms" style={{ color: 'var(--color-dust)' }}>Terms</a> and <a href="/privacy" style={{ color: 'var(--color-dust)' }}>Privacy Policy</a>.
         </p>
       </div>
     </div>

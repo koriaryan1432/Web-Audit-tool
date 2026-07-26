@@ -1,43 +1,31 @@
-/**
- * SiteGrade — Landing Page (Milestone 3 will flesh this out fully)
- * For now: a functional placeholder that renders the audit URL input form.
- */
+import Link from 'next/link';
+
+const CATEGORIES = ['Performance', 'SEO', 'Accessibility', 'Security', 'UX/UI', 'Best Practices'];
+
 export default function HomePage() {
   return (
-    <main className="min-h-screen bg-slate-950 flex flex-col items-center justify-center px-4">
-      <div className="max-w-2xl w-full text-center space-y-8">
-        <div className="space-y-2">
-          <h1 className="text-5xl font-bold text-white tracking-tight">
-            Site<span className="text-indigo-500">Grade</span>
-          </h1>
-          <p className="text-xl text-slate-400">
-            Know your score. Fix what matters.
-          </p>
+    <div style={{ minHeight: '100vh', background: 'var(--color-bg)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 'var(--space-6)' }}>
+      <div style={{ maxWidth: 640, width: '100%', textAlign: 'center' }}>
+        <div style={{ marginBottom: 'var(--space-8)' }}>
+          <span style={{ fontFamily: 'var(--font-display)', fontStyle: 'italic', fontSize: 'var(--text-4xl)', color: 'var(--color-ink)' }}>Site</span>
+          <span style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--text-4xl)', fontWeight: 600, color: 'var(--color-signal)', letterSpacing: 'var(--tracking-tight)' }}>Grade</span>
+          <p style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--text-lg)', color: 'var(--color-dust)', marginTop: 'var(--space-3)' }}>Know your score. Fix what matters.</p>
         </div>
-        <form action="/audit" method="GET" className="flex flex-col sm:flex-row gap-3">
-          <input
-            type="url"
-            name="url"
-            placeholder="https://yourwebsite.com"
-            required
-            className="flex-1 px-4 py-3 rounded-lg bg-slate-800 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-          />
-          <button
-            type="submit"
-            className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold rounded-lg transition-colors duration-200"
-          >
-            Run Audit
-          </button>
+        <form action="/audit" method="GET" style={{ display: 'flex', gap: 'var(--space-2)', marginBottom: 'var(--space-6)' }}>
+          <input type="url" name="url" placeholder="https://yourwebsite.com" required className="input" style={{ flex: 1, height: 44, fontSize: 'var(--text-base)' }} />
+          <button type="submit" className="btn-primary" style={{ padding: '10px var(--space-6)', height: 44, flexShrink: 0 }}>Run Audit</button>
         </form>
-        <div className="flex flex-wrap justify-center gap-2 text-sm text-slate-400">
-          {["Performance", "SEO", "Accessibility", "Security", "UX/UI", "Best Practices"].map((category) => (
-            <span key={category} className="px-3 py-1 rounded-full bg-slate-800 border border-slate-700">
-              {category}
-            </span>
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: 'var(--space-2)', marginBottom: 'var(--space-8)' }}>
+          {CATEGORIES.map((cat) => (
+            <span key={cat} style={{ padding: '4px 12px', borderRadius: 'var(--radius-full)', border: '1px solid var(--color-border)', background: 'var(--color-surface)', fontFamily: 'var(--font-ui)', fontSize: 'var(--text-xs)', fontWeight: 500, color: 'var(--color-dust)' }}>{cat}</span>
           ))}
         </div>
-        <p className="text-slate-500 text-sm">Free tier: 5 audits/month. No credit card required.</p>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-4)' }}>
+          <Link href="/login" className="btn-primary">Get Started Free</Link>
+          <Link href="/login" className="btn-secondary">Sign In</Link>
+        </div>
+        <p style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--text-xs)', color: 'var(--color-mist)', marginTop: 'var(--space-6)' }}>Free tier: 5 audits/month. No credit card required.</p>
       </div>
-    </main>
+    </div>
   );
 }
