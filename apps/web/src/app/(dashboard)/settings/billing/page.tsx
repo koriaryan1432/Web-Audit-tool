@@ -36,6 +36,7 @@ export default function BillingPage() {
   const [loading, setLoading] = useState(true);
   const [upgrading, setUpgrading] = useState<string | null>(null);
   const [portalLoading, setPortalLoading] = useState(false);
+  const [billingUnavailable, setBillingUnavailable] = useState(false);
 
   useEffect(() => {
     apiClient.billing.getSubscription()
@@ -49,8 +50,12 @@ export default function BillingPage() {
     try {
       const { checkoutUrl } = await apiClient.billing.createCheckout(plan);
       window.location.href = checkoutUrl;
-    } catch (err) {
-      console.error('Checkout failed:', err);
+    } catch (err: any) {
+      if (err?.status === 503 || err?.code === 'BILLING_NOT_CONFIGURED') {
+        setBillingUnavailable(true);
+      } else {
+        console.error('Checkout failed:', err);
+      }
       setUpgrading(null);
     }
   }
@@ -60,8 +65,12 @@ export default function BillingPage() {
     try {
       const { portalUrl } = await apiClient.billing.getPortal();
       window.location.href = portalUrl;
-    } catch (err) {
-      console.error('Portal failed:', err);
+    } catch (err: any) {
+      if (err?.status === 503 || err?.code === 'BILLING_NOT_CONFIGURED') {
+        setBillingUnavailable(true);
+      } else {
+        console.error('Portal failed:', err);
+      }
       setPortalLoading(false);
     }
   }
@@ -91,7 +100,18 @@ export default function BillingPage() {
         <p className="text-gray-500 mt-1">Manage your SiteGrade plan and payment details.</p>
       </div>
 
-      {/* Current Plan */}
+      {billingUnavailable && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
+          <span className="text-amber-500 text-xl">Coming Soon</span>
+          <div>
+            <p className="font-semibold text-amber-800">Billing Coming Soon</p>
+            <p className="text-sm text-amber-700 mt-1">
+              Stripe integration is being configured. Paid plans will be available shortly.
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
         <div className="flex items-start justify-between">
           <div>
@@ -104,7 +124,7 @@ export default function BillingPage() {
             </div>
             {periodEnd && (
               <p className="mt-2 text-sm text-gray-500">
-                {subscription?.cancelAtPeriodEnd ? `⚠️ Cancels on ${periodEnd}` : `Renews on ${periodEnd}`}
+                {subscription?.cancelAtPeriodEnd ? `Cancels on ${periodEnd}` : `Renews on ${periodEnd}`}
               </p>
             )}
           </div>
@@ -120,24 +140,11 @@ export default function BillingPage() {
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
           {planDetails.features.map((f) => (
-            <span key={f} className="px-3 py-1 bg-gray-50 text-gray-600 text-sm rounded-full border border-gray-200">✓ {f}</span>
+            <span key={f} className="px-3 py-1 bg-gray-50 text-gray-600 text-sm rounded-full border border-gray-200">+ {f}</span>
           ))}
         </div>
       </div>
 
-      {subscription?.cancelAtPeriodEnd && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
-          <span className="text-amber-500 text-xl">⚠️</span>
-          <div>
-            <p className="font-semibold text-amber-800">Subscription Cancelling</p>
-            <p className="text-sm text-amber-700 mt-1">
-              Your {currentPlan} plan will end on {periodEnd}. Click "Manage Subscription" to reactivate.
-            </p>
-          </div>
-        </div>
-      )}
-
-      {/* Plan Comparison */}
       <div>
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Available Plans</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -171,7 +178,7 @@ export default function BillingPage() {
                 <ul className="space-y-2 mb-6">
                   {details.features.map((f) => (
                     <li key={f} className="flex items-center gap-2 text-sm text-gray-600">
-                      <span className="text-green-500 font-bold">✓</span>{f}
+                      <span className="text-green-500 font-bold">+</span>{f}
                     </li>
                   ))}
                 </ul>
