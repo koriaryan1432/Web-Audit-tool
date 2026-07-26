@@ -1,19 +1,11 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
-  "rootDirectory": ".",
-  "buildCommand": "cd ../.. && pnpm turbo build --filter=web",
-  "outputDirectory": "apps/web/.next",
-  "installCommand": "pnpm install --frozen-lockfile",
-  "devCommand": "cd apps/web && pnpm dev",
+  "rootDirectory": "apps/web",
+  "buildCommand": "cd ../.. && pnpm install --frozen-lockfile && pnpm turbo build --filter=web",
+  "outputDirectory": ".next",
+  "installCommand": "echo 'install handled by buildCommand'",
   "ignoreCommand": "git diff HEAD^ HEAD --quiet -- apps/web/ packages/",
-  "env": {
-    "NEXT_PUBLIC_SUPABASE_URL": "@next_public_supabase_url",
-    "NEXT_PUBLIC_SUPABASE_ANON_KEY": "@next_public_supabase_anon_key",
-    "NEXT_PUBLIC_API_URL": "@next_public_api_url",
-    "NEXT_PUBLIC_APP_URL": "@next_public_app_url",
-    "NEXT_PUBLIC_APP_ENV": "@next_public_app_env"
-  },
   "headers": [
     {
       "source": "/(.*)",
@@ -22,23 +14,9 @@
         { "key": "X-Frame-Options", "value": "DENY" },
         { "key": "X-XSS-Protection", "value": "1; mode=block" },
         { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
-        {
-          "key": "Permissions-Policy",
-          "value": "camera=(), microphone=(), geolocation=()"
-        }
+        { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=()" }
       ]
     }
   ],
-  "rewrites": [
-    {
-      "source": "/api/v1/:path*",
-      "destination": "https://api.sitegade.app/api/v1/:path*"
-    }
-  ],
-  "regions": ["iad1"],
-  "functions": {
-    "apps/web/src/app/**": {
-      "maxDuration": 30
-    }
-  }
+  "regions": ["iad1"]
 }

@@ -4,15 +4,29 @@
  * Set UPSTASH_REDIS_URL + UPSTASH_REDIS_TOKEN to enable the worker queue.
  */
 import { Queue } from 'bullmq';
-import IORedis from 'ioredis';
-import type { AuditJobData } from '../../../worker/src/queue/types.js';
+import Redis from 'ioredis';
 import { REDIS_ENABLED } from './redis.js';
 
 export const AUDIT_QUEUE_NAME = 'audit';
 
-function createRedisConnection(): IORedis {
+// Inline type — avoids cross-app relative import from worker package
+export type AuditJobData = {
+  auditId: string;
+  url: string;
+  userId: string;
+  orgId?: string;
+  options: {
+    categories?: Array<'performance' | 'accessibility' | 'best-practices' | 'seo'>;
+    runAxe?: boolean;
+    generateAiRecommendations?: boolean;
+    device?: 'mobile' | 'desktop';
+    throttling?: 'simulated' | 'devtools' | 'none';
+  };
+};
+
+function createRedisConnection(): Redis {
   const url = new URL(process.env.UPSTASH_REDIS_URL!);
-  return new IORedis({
+  return new Redis({
     host: url.hostname,
     port: 6380,
     password: process.env.UPSTASH_REDIS_TOKEN,
@@ -22,8 +36,8 @@ function createRedisConnection(): IORedis {
   });
 }
 
-let _connection: IORedis | null = null;
-export function getRedisConnection(): IORedis | null {
+let _connection: Redis | null = null;
+export function getRedisConnection(): Redis | null {
   if (!REDIS_ENABLED) return null;
   if (!_connection) _connection = createRedisConnection();
   return _connection;
