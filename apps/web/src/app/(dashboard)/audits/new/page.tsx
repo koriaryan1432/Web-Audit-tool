@@ -5,43 +5,30 @@ import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api-client';
 
 const CATEGORIES = [
-  { id: 'performance', label: 'Performance', icon: '⚡' },
-  { id: 'accessibility', label: 'Accessibility', icon: '♿' },
-  { id: 'best-practices', label: 'Best Practices', icon: '✅' },
-  { id: 'seo', label: 'SEO', icon: '🔍' },
+  { id: 'performance',    label: 'Performance' },
+  { id: 'accessibility',  label: 'Accessibility' },
+  { id: 'best-practices', label: 'Best Practices' },
+  { id: 'seo',            label: 'SEO' },
 ] as const;
 
 export default function NewAuditPage() {
   const router = useRouter();
   const [url, setUrl] = useState('');
   const [device, setDevice] = useState<'mobile' | 'desktop'>('mobile');
-  const [categories, setCategories] = useState<string[]>([
-    'performance', 'accessibility', 'best-practices', 'seo',
-  ]);
+  const [categories, setCategories] = useState<string[]>(['performance', 'accessibility', 'best-practices', 'seo']);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   function toggleCategory(id: string) {
-    setCategories((prev) =>
-      prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]
-    );
+    setCategories((prev) => prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]);
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (categories.length === 0) {
-      setError('Select at least one category');
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
+    if (categories.length === 0) { setError('Select at least one category'); return; }
+    setLoading(true); setError(null);
     try {
-      const result = await apiClient.audits.create({
-        url,
-        options: { categories, device, throttling: 'simulated' },
-      });
+      const result = await apiClient.audits.create({ url, options: { categories, device, throttling: 'simulated' } });
       router.push(`/dashboard/audits/${result.auditId}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to start audit');
@@ -50,91 +37,53 @@ export default function NewAuditPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
+    <div style={{ maxWidth: 600, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 'var(--space-8)' }}>
       <div>
-        <h1 className="text-2xl font-bold text-white">New Audit</h1>
-        <p className="text-gray-400 mt-1">Enter a URL to audit. Results in under 60 seconds.</p>
+        <h1 style={{ marginBottom: 'var(--space-1)' }}>New Audit</h1>
+        <p style={{ fontSize: 'var(--text-sm)' }}>Enter a URL to audit. Results in under 60 seconds.</p>
       </div>
-
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {/* URL input */}
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
-          <label className="block text-sm font-medium text-gray-300 mb-2">
-            Website URL
-          </label>
-          <input
-            type="url"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            required
-            placeholder="https://example.com"
-            className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg"
-          />
+      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+        <div className="card">
+          <label htmlFor="url" style={{ display: 'block', fontFamily: 'var(--font-ui)', fontSize: 'var(--text-sm)', fontWeight: 500, color: 'var(--color-ink)', marginBottom: 'var(--space-2)' }}>Website URL</label>
+          <input id="url" type="url" value={url} onChange={(e) => setUrl(e.target.value)} required placeholder="https://example.com" className="input" style={{ height: 44, fontSize: 'var(--text-base)' }} />
         </div>
-
-        {/* Categories */}
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
-          <label className="block text-sm font-medium text-gray-300 mb-3">
-            Audit Categories
-          </label>
-          <div className="grid grid-cols-2 gap-3">
-            {CATEGORIES.map((cat) => (
-              <button
-                key={cat.id}
-                type="button"
-                onClick={() => toggleCategory(cat.id)}
-                className={`flex items-center gap-2 px-4 py-3 rounded-lg border text-sm font-medium transition-colors ${
-                  categories.includes(cat.id)
-                    ? 'bg-blue-600 border-blue-500 text-white'
-                    : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600'
-                }`}
-              >
-                <span>{cat.icon}</span>
-                {cat.label}
-              </button>
-            ))}
+        <div className="card">
+          <p style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--text-sm)', fontWeight: 500, color: 'var(--color-ink)', marginBottom: 'var(--space-3)' }}>Audit Categories</p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-2)' }}>
+            {CATEGORIES.map((cat) => {
+              const active = categories.includes(cat.id);
+              return (
+                <button key={cat.id} type="button" onClick={() => toggleCategory(cat.id)}
+                  style={{ padding: '10px var(--space-4)', borderRadius: 'var(--radius-md)', border: `1px solid ${active ? 'var(--color-signal)' : 'var(--color-border)'}`, background: active ? '#EEF4FD' : 'var(--color-surface)', fontFamily: 'var(--font-ui)', fontSize: 'var(--text-sm)', fontWeight: 500, color: active ? 'var(--color-signal)' : 'var(--color-dust)', cursor: 'pointer', transition: `all 150ms var(--ease-out)`, textAlign: 'left' }}>
+                  {cat.label}
+                </button>
+              );
+            })}
           </div>
         </div>
-
-        {/* Device */}
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-6">
-          <label className="block text-sm font-medium text-gray-300 mb-3">Device</label>
-          <div className="flex gap-3">
-            {(['mobile', 'desktop'] as const).map((d) => (
-              <button
-                key={d}
-                type="button"
-                onClick={() => setDevice(d)}
-                className={`flex-1 py-2.5 rounded-lg border text-sm font-medium capitalize transition-colors ${
-                  device === d
-                    ? 'bg-blue-600 border-blue-500 text-white'
-                    : 'bg-gray-800 border-gray-700 text-gray-400 hover:border-gray-600'
-                }`}
-              >
-                {d === 'mobile' ? '📱' : '🖥️'} {d}
-              </button>
-            ))}
+        <div className="card">
+          <p style={{ fontFamily: 'var(--font-ui)', fontSize: 'var(--text-sm)', fontWeight: 500, color: 'var(--color-ink)', marginBottom: 'var(--space-3)' }}>Device</p>
+          <div style={{ display: 'flex', gap: 'var(--space-2)' }}>
+            {(['mobile', 'desktop'] as const).map((d) => {
+              const active = device === d;
+              return (
+                <button key={d} type="button" onClick={() => setDevice(d)}
+                  style={{ flex: 1, padding: '10px var(--space-4)', borderRadius: 'var(--radius-md)', border: `1px solid ${active ? 'var(--color-signal)' : 'var(--color-border)'}`, background: active ? '#EEF4FD' : 'var(--color-surface)', fontFamily: 'var(--font-ui)', fontSize: 'var(--text-sm)', fontWeight: 500, color: active ? 'var(--color-signal)' : 'var(--color-dust)', cursor: 'pointer', textTransform: 'capitalize', transition: `all 150ms var(--ease-out)` }}>
+                  {d === 'mobile' ? '📱' : '🖥️'} {d}
+                </button>
+              );
+            })}
           </div>
         </div>
-
         {error && (
-          <div className="p-3 bg-red-900/30 border border-red-700 rounded-lg text-red-300 text-sm">
-            {error}
-          </div>
+          <div style={{ padding: 'var(--space-3) var(--space-4)', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 'var(--radius-md)', fontFamily: 'var(--font-ui)', fontSize: 'var(--text-sm)', color: '#991B1B' }}>{error}</div>
         )}
-
-        <button
-          type="submit"
-          disabled={loading || !url}
-          className="w-full py-3 px-6 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-colors text-lg"
-        >
+        <button type="submit" disabled={loading || !url} className="btn-primary" style={{ width: '100%', padding: '12px var(--space-6)', fontSize: 'var(--text-base)' }}>
           {loading ? (
-            <span className="flex items-center justify-center gap-2">
-              <span className="animate-spin">⏳</span> Starting audit...
+            <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--space-2)' }}>
+              <span className="spinner" />Starting audit…
             </span>
-          ) : (
-            '🚀 Run Audit'
-          )}
+          ) : 'Run Audit'}
         </button>
       </form>
     </div>
